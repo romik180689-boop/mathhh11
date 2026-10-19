@@ -429,13 +429,17 @@ async def timeout_task(message: Message, state: FSMContext, round_num: int):
             await next_question(message, state)
 
 @dp.message(GameStates.waiting_answer)
+@dp.message(GameStates.waiting_answer)
 async def check_answer(message: Message, state: FSMContext):
     data = await state.get_data()
     correct = data.get("answer")
     current_round = data.get("current_round", 1)
     correct_answers = data.get("correct_answers", 0)
     old_task = data.get("timer_task")
-    if old_task: old_task.cancel()
+    
+    if old_task:
+        old_task.cancel()
+
     try:
         user_answer = int(message.text.strip())
     except ValueError:
@@ -443,98 +447,28 @@ async def check_answer(message: Message, state: FSMContext):
         task = asyncio.create_task(timeout_task(message, state, current_round))
         await state.update_data(timer_task=task)
         return
+
     if user_answer == correct:
         correct_answers += 1
-        await message.answer(f"✅ <b>Верно!</b>", parse_mode="HTML")
+        await message.answer("✅ <b>Верно!</b>", parse_mode="HTML")
     else:
         await message.answer(f"❌ <b>Ошибка.</b> Ответ: <b>{correct}</b>", parse_mode="HTML")
-    try: await message.delete()
-    except: pass
-    await state.update_data(correct_answers=correct_answers, current_round=current_round + 1)
+
+    # Безопасно удаляем сообщение пользователя, чтобы не было ошибки
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    await state.update_data(
+        correct_answers=correct_answers,
+        current_round=current_round + 1
+    )
+    
     await asyncio.sleep(1.5)
-       await next_question_new(message, state)
-async def next_question_new(message: Message, state: FSMContext):
-    """Отправляет новый вопрос ОТДЕЛЬНЫМ сообщением (не редактирует старое)."""
-    data = await state.get_data()
-    current_round = data.get("current_round", 1)
-    difficulty = data.get("difficulty", "easy")
-
-    if current_round > TOTAL_QUESTIONS:
-        await finish_game(message, state)
-        return
-
-    old_task = data.get("timer_task")
-    if old_task:
-        old_task.cancel()
-
-    question_text, answer = generate_question(difficulty)
-    await state.update_data(answer=answer)
-
-    progress = "🟩" * (current_round - 1) + "🟨" + "⬜" * (TOTAL_QUESTIONS - current_round)
-
-    await message.answer(
-        f"<b>┏━━━━━━━━━━━━━━━┓</b>\n"
-        f"<b>  ВОПРОС {current_round}/{TOTAL_QUESTIONS}</b>\n"
-        f"<b>┗━━━━━━━━━━━━━━━┛</b>\n\n"
-        f"{progress}\n\n"
-        f"❓ <code>{question_text} = ?</code>\n\n"
-        f"⏱ <i>У тебя 15 секунд!</i>",
-        parse_mode="HTML", reply_markup=cancel_menu()
-    )
-    await state.set_state(GameStates.waiting_answer)
-    task = asyncio.create_task(timeout_task(message, state, current_round))
-    await state.update_data(timer_task=task)
-async def finish_game(message: Message, state: FSMContext):
-    data = await state.get_data()
-    correct_answers = data.get("correct_answers", 0)
-    user_id = message.chat.id
-    name = message.chat.first_name or "Игрок"
-    streak, earned_coins = update_user_stats(user_id, name, correct_answers, TOTAL_QUESTIONS)
     
-    new_ach = []
-    if correct_answers == TOTAL_QUESTIONS:
-        if add_achievement(user_id, "🏆 Идеальный раунд"): new_ach.append("🏆 Идеальный раунд")
-    if streak >= 3:
-        if add_achievement(user_id, "🔥 В ударе (3 дня)"): new_ach.append("🔥 В ударе (3 дня)")
-    
-    user = get_user(user_id)
-    if user[2] >= 100:
-        if add_achievement(user_id, "💯 100 очков"): new_ach.append("💯 100 очков")
-    if user[2] >= 500:
-        if add_achievement(user_id, "👑 Бог Математики"): new_ach.append("👑 Бог Математики")
-
-    await state.clear()
-    rank = get_rank(user[2])
-    badge = get_badge_emoji(user[10])
-    
-    if correct_answers == TOTAL_QUESTIONS: emoji, title = "🏆", "ИДЕАЛЬНО!"
-    elif correct_answers >= 3: emoji, title = "🔥", "ОТЛИЧНО!"
-    elif correct_answers >= 2: emoji, title = "👍", "ХОРОШО!"
-    else: emoji, title = "💪", "ЕСТЬ КУДА РАСТИ"
-    
-    text = (
-        f"<b>┏━━━━━━━━━━━━━━━┓</b>\n"
-        f"<b>  {emoji} {title}</b>\n"
-        f"<b>┗━━━━━━━━━━━━━━━┛</b>\n\n"
-        f"Правильных: <b>{correct_answers} из {TOTAL_QUESTIONS}</b>\n"
-        f"💰 Заработано: <b>+{earned_coins} монет</b>\n\n"
-        f"🔥 Стрик: <b>{streak} дней</b>\n"
-        f"📈 Рекорд: <b>{user[2]}</b> | Ранг: <b>{rank} {badge}</b>"
-    )
-    if new_ach:
-        text += "\n\n🏅 <b>Новые достижения:</b>\n"
-        for a in new_ach: text += f"🔸 {a}\n"
-            
-    await message.edit_text(text, parse_mode="HTML", reply_markup=main_menu(user))
-
-@dp.callback_query(F.data == "cancel")
-async def cancel_game(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    old_task = data.get("timer_task")
-    if old_task: old_task.cancel()
-    await state.clear()
-    await call.message.edit_text("🛑 Игра прервана.", reply_markup=main_menu(get_user(call.from_user.id)))
-    await call.answer()
+    # Вызываем функцию, которая отправит НОВОЕ сообщение
+    await next_question_new(message, state)
 
 # ==================== ВЕБ-СЕРВЕР ДЛЯ RENDER (ЗАГЛУШКА) ====================
 app = Flask(__name__)
