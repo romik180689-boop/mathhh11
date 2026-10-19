@@ -1,3 +1,4 @@
+import uuid
 import asyncio
 import os
 import sqlite3
@@ -29,7 +30,7 @@ dp = Dispatcher()
 # ==================== СОСТОЯНИЯ ====================
 class GameStates(StatesGroup):
     waiting_answer = State()
-
+    waiting_duel = State()
 # ==================== БАЗА ДАННЫХ ====================
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -266,7 +267,7 @@ async def cmd_start(message: Message):
         f"💰 Баланс: <b>{user[8]} монет</b>"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu(user))
-
+[InlineKeyboardButton(text="⚔️ Дуэль с другом", callback_data="duel_start")],
 # ==================== МЕНЮ И МАГАЗИН ====================
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_menu(call: CallbackQuery, state: FSMContext):
@@ -526,7 +527,141 @@ async def cancel_game(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("🛑 Игра прервана.", reply_markup=main_menu(get_user(call.from_user.id)))
     await call.answer()
+# ==================== ДУЭЛЬ ====================
+import uuid
+duels = {} # Хранилище активных дуэлей
 
+@dp.callback_query(F.data == "duel_start")
+async def duel_start(call: CallbackQuery):
+    duel_id = str(uuid.uuid4())[:8]
+    duels[duel_id] = {
+        "player1": call.from_user.id,
+        "player2": None,
+        "scores": {call.from_user.id: 0},
+        "round": 0,
+        "active": False
+    }
+    bot_info = await bot.get_me()
+    link = f"https://t.me/{bot_info.username}?start=duel_{duel_id}"
+    
+    text = (
+        f"⚔️ <b>Дуэль создана!</b>\n\n"
+        f"Отправь эту ссылку другу, чтобы он присоединился:\n"
+        f"<code>{link}</code>\n\n"
+        f"Как только друг перейдет по ссылке, игра начнется автоматически!"
+    )
+    await call.message.edit_text(text, parse_mode="HTML")
+    await call.answer()
+
+@dp.message(Command("start"))
+async def cmd_start(message: Message, state: FSMContext):
+    # Проверяем, перешел ли пользователь по ссылке дуэли
+    args = message.text.split()
+    if len(args) > 1 and args[1].startswith("duel_"):
+        duel_id = args[1].replace("duel_", "")
+        
+        if duel_id in duels:
+            duel = duels[duel_id]
+            
+            if duel["player1"] == message.from_user.id:
+                await message.answer("Ты не можешь играть сам с собой! 😅")
+                return
+
+            if duel["player2"] is None:
+                duel["player2"] = message.from_user.id
+                duel["scores"][message.from_user.id] = 0
+                duel["active"] = True
+                
+                # Начинаем дуэль
+                await message.answer("🔥 <b>Дуэль началась!</b>")
+                await start_duel_round(duel_id)
+            else:
+                await message.answer("Эта дуэль уже занята!")
+        else:
+            await message.answer("Дуэль не найдена или уже завершена.")
+        return
+
+    # Стандартный старт (если не дуэль)
+    create_user(message.from_user.id, message.from_user.first_name or "Игрок")
+    user = get_user(message.from_user.id)
+    rank = get_rank(user[2])
+    badge = get_badge_emoji(user[10])
+    
+    text = (
+        f"👋 <b>Привет, {user[1]} {badge}!</b>\n\n"
+        f"Это <b>Математическая Дуэль</b>.\n"
+        f"Твой ранг: <b>{rank}</b>\n"
+        f"🔥 Стрик: <b>{user[5]} дней</b>\n"
+        f"💰 Баланс: <b>{user[8]} монет</b>"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=main_menu(user))
+
+async def start_duel_round(duel_id):
+    duel = duels[duel_id]
+    duel["round"] += 1
+    
+    # Генерируем вопрос
+    a = random.randint(10, 50)
+    b = random.randint(10, 50)
+    answer = a + b
+    duel["answer"] = answer
+    duel["correct_answered"] = False
+    
+    text = (
+        f"<b>┏━━━━━━━━━━━━━━━┓</b>\n"
+        f"<b>  РАУНД {duel['round']}</b>\n"
+        f"<b>┗━━━━━━━━━━━━━━━┛</b>\n\n"
+        f"❓ <code>{a} + {b} = ?</code>\n\n"
+        f"⚡️ Кто первый напишет ответ, тот забирает очко!"
+    )
+    
+    await bot.send_message(duel["player1"], text, parse_mode="HTML")
+    await bot.send_message(duel["player2"], text, parse_mode="HTML")
+    
+    # Обработчик ответа для игроков
+    @dp.message()
+    async def duel_answer(message: Message, state: FSMContext):
+        # Находим дуэль, в которой состоит игрок
+        current_duel = None
+        for d_id, d in duels.items():
+            if d.get("active") and (message.from_user.id == d["player1"] or message.from_user.id == d["player2"]):
+                current_duel = d
+                c_id = d_id
+                break
+        
+        if not current_duel:
+            return # Это не ответ в дуэли, пропускаем
+        
+        if current_dual.get("correct_answered"):
+            return # Уже кто-то ответил
+        
+        try:
+            user_answer = int(message.text.strip())
+        except ValueError:
+            return # Не число, пропускаем
+        
+        if user_answer == current_duel["answer"]:
+            current_duel["correct_answered"] = True
+            current_duel["scores"][message.from_user.id] += 1
+            
+            winner_id = message.from_user.id
+            winner_name = message.from_user.first_name
+            
+            # Проверка на победу (3 очка)
+            if current_duel["scores"][winner_id] >= 3:
+                current_duel["active"] = False
+                text = f"🏆 <b>Дуэль окончена!</b>\nПобедил {winner_name}!\nСчет: {current_duel['scores'][current_duel['player1']]} - {current_duel['scores'][current_duel['player2']]}"
+                await bot.send_message(current_duel["player1"], text, parse_mode="HTML")
+                await bot.send_message(current_duel["player2"], text, parse_mode="HTML")
+                del duels[c_id]
+            else:
+                # Сообщаем, кто забрал очко
+                text = f"✅ <b>{winner_name} забирает очко!</b>\nТекущий счет: {current_duel['scores'][current_duel['player1']]} - {current_duel['scores'][current_duel['player2']]}"
+                await bot.send_message(current_duel["player1"], text, parse_mode="HTML")
+                await bot.send_message(current_duel["player2"], text, parse_mode="HTML")
+                
+                await asyncio.sleep(2)
+                await start_duel_round(c_id) # Следующий раунд
 # ==================== ВЕБ-СЕРВЕР ДЛЯ RENDER ====================
 app = Flask(__name__)
 
