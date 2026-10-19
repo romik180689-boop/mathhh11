@@ -161,7 +161,9 @@ def get_theme_style(theme):
         "gold": ("<b>", "</b>"),  # Жирный (золотой цвет через эмодзи)
     }
     return styles.get(theme, ("<b>", "</b>"))
-
+# ==================== СОСТОЯНИЯ ====================
+class GameStates(StatesGroup):
+    waiting_answer = State()
 # ==================== ГЕНЕРАТОР ====================
 def generate_question(difficulty):
     if difficulty == "easy":
