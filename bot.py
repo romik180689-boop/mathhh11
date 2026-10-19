@@ -452,8 +452,38 @@ async def check_answer(message: Message, state: FSMContext):
     except: pass
     await state.update_data(correct_answers=correct_answers, current_round=current_round + 1)
     await asyncio.sleep(1.5)
-    await next_question(message, state)
+       await next_question_new(message, state)
+async def next_question_new(message: Message, state: FSMContext):
+    """Отправляет новый вопрос ОТДЕЛЬНЫМ сообщением (не редактирует старое)."""
+    data = await state.get_data()
+    current_round = data.get("current_round", 1)
+    difficulty = data.get("difficulty", "easy")
 
+    if current_round > TOTAL_QUESTIONS:
+        await finish_game(message, state)
+        return
+
+    old_task = data.get("timer_task")
+    if old_task:
+        old_task.cancel()
+
+    question_text, answer = generate_question(difficulty)
+    await state.update_data(answer=answer)
+
+    progress = "🟩" * (current_round - 1) + "🟨" + "⬜" * (TOTAL_QUESTIONS - current_round)
+
+    await message.answer(
+        f"<b>┏━━━━━━━━━━━━━━━┓</b>\n"
+        f"<b>  ВОПРОС {current_round}/{TOTAL_QUESTIONS}</b>\n"
+        f"<b>┗━━━━━━━━━━━━━━━┛</b>\n\n"
+        f"{progress}\n\n"
+        f"❓ <code>{question_text} = ?</code>\n\n"
+        f"⏱ <i>У тебя 15 секунд!</i>",
+        parse_mode="HTML", reply_markup=cancel_menu()
+    )
+    await state.set_state(GameStates.waiting_answer)
+    task = asyncio.create_task(timeout_task(message, state, current_round))
+    await state.update_data(timer_task=task)
 async def finish_game(message: Message, state: FSMContext):
     data = await state.get_data()
     correct_answers = data.get("correct_answers", 0)
