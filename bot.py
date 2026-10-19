@@ -202,6 +202,7 @@ def main_menu(user):
     badge = get_badge_emoji(user[10])
     kb = [
         [InlineKeyboardButton(text="🚀 Начать игру", callback_data="play")],
+        [InlineKeyboardButton(text="⚔️ Дуэль с другом", callback_data="duel_start")],
         [InlineKeyboardButton(text="🏪 Магазин", callback_data="shop")],
         [InlineKeyboardButton(text="🏆 Зал Славы", callback_data="top")],
         [InlineKeyboardButton(text=f"👤 Профиль {badge}", callback_data="profile")],
