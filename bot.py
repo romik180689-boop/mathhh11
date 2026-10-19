@@ -519,6 +519,11 @@ def run_web():
 
 # ==================== ЗАПУСК ====================
 async def main():
+    # ⚠️ Удаляем старую базу данных, чтобы избежать IndexError
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        print("Старая база удалена.")
+    
     init_db()
     print("МЕГА-БОТ ЗАПУЩЕН...")
     threading.Thread(target=run_web, daemon=True).start()
