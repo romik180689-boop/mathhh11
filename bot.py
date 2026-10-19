@@ -82,7 +82,6 @@ def update_user_stats(user_id, name, correct, total):
     else:
         streak = 1
     
-    # Начисляем монеты (1 очко = 1 монета, если стрик больше 3, то x1.5)
     coins_multiplier = 1.5 if streak >= 3 else 1.0
     earned_coins = int(correct * coins_multiplier)
     
@@ -116,6 +115,21 @@ def buy_item(user_id, item_type, item_value, price):
     conn.close()
     return False
 
+def add_achievement(user_id, ach):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    user = get_user(user_id)
+    if user:
+        achs = user[7] if user[7] else ""
+        if ach not in achs:
+            achs = achs + f"|{ach}" if achs else ach
+            cur.execute("UPDATE users SET achievements = ? WHERE user_id = ?", (achs, user_id))
+            conn.commit()
+            conn.close()
+            return True
+    conn.close()
+    return False
+
 def get_top():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -124,7 +138,7 @@ def get_top():
     conn.close()
     return rows
 
-# ==================== РАНГИ ====================
+# ==================== РАНГИ И БЕЙДЖИ ====================
 def get_rank(score):
     if score >= 500: return "👑 Бог Математики"
     if score >= 250: return "🔥 Гроссмейстер"
@@ -137,6 +151,16 @@ def get_rank(score):
 def get_badge_emoji(badge):
     badges = {"star": "⭐", "rocket": "🚀", "skull": "💀", "crown": "👑", "none": ""}
     return badges.get(badge, "")
+
+def get_theme_style(theme):
+    # Возвращает (цвет_текста, эмодзи_рамки)
+    styles = {
+        "default": ("<b>", "</b>"),  # Жирный по умолчанию
+        "dark": ("<i><b>", "</b></i>"), # Курсив + жирный
+        "neon": ("<u><b>", "</b></u>"), # Подчеркнутый + жирный
+        "gold": ("<b>", "</b>"),  # Жирный (золотой цвет через эмодзи)
+    }
+    return styles.get(theme, ("<b>", "</b>"))
 
 # ==================== ГЕНЕРАТОР ====================
 def generate_question(difficulty):
@@ -236,6 +260,7 @@ async def cmd_start(message: Message):
     user = get_user(message.from_user.id)
     rank = get_rank(user[2])
     badge = get_badge_emoji(user[10])
+    _, close_tag = get_theme_style(user[9])
     
     text = (
         f"👋 <b>Привет, {user[1]} {badge}!</b>\n\n"
@@ -341,21 +366,22 @@ async def show_achs(call: CallbackQuery):
 @dp.callback_query(F.data == "top")
 async def show_top(call: CallbackQuery):
     top = get_top()
+    user = get_user(call.from_user.id)
     if not top:
-        await call.message.edit_text("Пока никто не играл. Будь первым! 🚀", reply_markup=main_menu(get_user(call.from_user.id)))
+        await call.message.edit_text("Пока никто не играл. Будь первым! 🚀", reply_markup=main_menu(user))
         return
     text = "🏆 <b>Зал Славы (Топ-5):</b>\n\n"
     for i, (name, score, streak, badge) in enumerate(top, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "👤"
         b_emoji = get_badge_emoji(badge)
         text += f"{medal} {i}. {name} {b_emoji} — <b>{score}</b> очков (🔥{streak})\n"
-    await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu(get_user(call.from_user.id)))
+    await call.message.edit_text(text, parse_mode="HTML", reply_markup=main_menu(user))
     await call.answer()
 
 # ==================== ИГРА ====================
 @dp.callback_query(F.data == "play")
 async def choose_difficulty(call: CallbackQuery):
-    await call.message.edit_text("Выбери уровень сложности:", parse_mode="HTML", reply_markup=difficulty_menu())
+    await call.message.edit_text("Выбери уровень сложности:", reply_markup=difficulty_menu())
     await call.answer()
 
 @dp.callback_query(F.data.startswith("diff_"))
@@ -376,12 +402,20 @@ async def next_question(message: Message, state: FSMContext):
         return
     old_task = data.get("timer_task")
     if old_task: old_task.cancel()
+    
     question_text, answer = generate_question(difficulty)
     await state.update_data(answer=answer)
+    
+    # Красивый прогресс-бар
     progress = "🟩" * current_round + "⬜" * (TOTAL_QUESTIONS - current_round)
+    
     await message.edit_text(
-        f"{progress}\n❓ <b>Вопрос {current_round} из {TOTAL_QUESTIONS}</b>\n\n"
-        f"<code>{question_text} = ?</code>\n\n⏱ У тебя 15 секунд!",
+        f"<b>┏━━━━━━━━━━━━━━━┓</b>\n"
+        f"<b>  ВОПРОС {current_round}/{TOTAL_QUESTIONS}</b>\n"
+        f"<b>┗━━━━━━━━━━━━━━━┛</b>\n\n"
+        f"{progress}\n\n"
+        f"❓ <code>{question_text} = ?</code>\n\n"
+        f"⏱ <i>У тебя 15 секунд!</i>",
         parse_mode="HTML", reply_markup=cancel_menu()
     )
     await state.set_state(GameStates.waiting_answer)
@@ -455,10 +489,11 @@ async def finish_game(message: Message, state: FSMContext):
     else: emoji, title = "💪", "ЕСТЬ КУДА РАСТИ"
     
     text = (
-        f"{emoji} <b>{title}</b>\n━━━━━━━━━━━━━━━\n\n"
+        f"<b>┏━━━━━━━━━━━━━━━┓</b>\n"
+        f"<b>  {emoji} {title}</b>\n"
+        f"<b>┗━━━━━━━━━━━━━━━┛</b>\n\n"
         f"Правильных: <b>{correct_answers} из {TOTAL_QUESTIONS}</b>\n"
         f"💰 Заработано: <b>+{earned_coins} монет</b>\n\n"
-        f"━━━━━━━━━━━━━━━\n"
         f"🔥 Стрик: <b>{streak} дней</b>\n"
         f"📈 Рекорд: <b>{user[2]}</b> | Ранг: <b>{rank} {badge}</b>"
     )
