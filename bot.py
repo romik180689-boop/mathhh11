@@ -386,7 +386,7 @@ async def start_game(call: CallbackQuery, state: FSMContext):
     await state.update_data(difficulty=difficulty, current_round=1, correct_answers=0, timer_task=None)
     await call.message.edit_text("🔥 Поехали! Приготовься...", reply_markup=cancel_menu())
     await asyncio.sleep(1)
-    await next_question(call.message, state)
+    await next_question_new(call.message, state)
 
 async def next_question(message: Message, state: FSMContext):
     data = await state.get_data()
