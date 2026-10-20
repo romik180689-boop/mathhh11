@@ -215,8 +215,15 @@ def shop_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎨 Темы (монеты)", callback_data="shop_themes")],
         [InlineKeyboardButton(text="🏅 Бейджи (монеты)", callback_data="shop_badges")],
-        [InlineKeyboardButton(text="⚔️ Бусты для математики (пыль)", callback_data="shop_math_boosts")], # Новое
+        [InlineKeyboardButton(text="🌌 Галактики (пыль)", callback_data="shop_galaxies")],
+        [InlineKeyboardButton(text="⚔️ Бусты для математики (пыль)", callback_data="shop_math_boosts")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")],
+    ])
+    def galaxies_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌌 Галактика 2: Красный гигант (200 пыли)", callback_data="buy_galaxy_2")],
+        [InlineKeyboardButton(text="🌌 Галактика 3: Изумрудный мир (500 пыли)", callback_data="buy_galaxy_3")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="shop")],
     ])
 def math_boosts_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -359,6 +366,38 @@ async def buy_skip(call: CallbackQuery):
         await call.answer("❌ Недостаточно пыли!", show_alert=True)
     conn.close()
     await call.message.edit_text("⚔️ Магазин математики:", reply_markup=math_boosts_menu())
+    @dp.callback_query(F.data == "shop_galaxies")
+async def show_galaxies(call: CallbackQuery):
+    user = get_user(call.from_user.id)
+    dust = user[11] if len(user) > 11 else 0
+    await call.message.edit_text(
+        f"🌌 <b>Магазин галактик</b>\n\n"
+        f"✨ Твоя пыль: <b>{dust}</b>\n\n"
+        f"Открывай новые галактики в кликере и покупай их здесь!",
+        parse_mode="HTML",
+        reply_markup=galaxies_menu()
+    )
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("buy_galaxy_"))
+async def buy_galaxy(call: CallbackQuery):
+    galaxy_num = int(call.data.replace("buy_galaxy_", ""))
+    price = 200 if galaxy_num == 2 else 500
+    
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT star_dust FROM users WHERE user_id = ?", (call.from_user.id,))
+    row = cur.fetchone()
+    dust = row[0] if row else 0
+    
+    if dust >= price:
+        cur.execute("UPDATE users SET star_dust = star_dust - ?, theme = ? WHERE user_id = ?", (price, f"galaxy_{galaxy_num}", call.from_user.id))
+        conn.commit()
+        await call.answer(f"✅ Галактика {galaxy_num} куплена!", show_alert=True)
+    else:
+        await call.answer("❌ Недостаточно пыли!", show_alert=True)
+    conn.close()
+    await call.message.edit_text("🌌 Магазин галактик:", reply_markup=galaxies_menu())
 # ==================== ПРОФИЛЬ ====================
 @dp.callback_query(F.data == "profile")
 async def show_profile(call: CallbackQuery):
