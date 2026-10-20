@@ -218,7 +218,12 @@ def shop_menu():
         [InlineKeyboardButton(text="⚔️ Бусты для математики (пыль)", callback_data="shop_math_boosts")], # Новое
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")],
     ])
-
+def math_boosts_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏱ +5 секунд на ответ (50 пыли)", callback_data="buy_time_boost")],
+        [InlineKeyboardButton(text="💡 Пропуск вопроса без потери очка (100 пыли)", callback_data="buy_skip")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="shop")],
+    ])
 def badges_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⭐ Звезда (100)", callback_data="buy_badge_star")],
@@ -308,7 +313,52 @@ async def buy_badge(call: CallbackQuery):
         await call.answer("❌ Недостаточно монет!", show_alert=True)
     user = get_user(call.from_user.id)
     await call.message.edit_text("Главное меню:", reply_markup=main_menu(user))
+@dp.callback_query(F.data == "shop_math_boosts")
+async def show_math_boosts(call: CallbackQuery):
+    user = get_user(call.from_user.id)
+    dust = user[11] if len(user) > 11 else 0
+    await call.message.edit_text(
+        f"⚔️ <b>Бусты для математики</b>\n\n"
+        f"✨ Твоя пыль: <b>{dust}</b>\n\n"
+        f"Эти предметы помогут тебе в дуэлях!",
+        parse_mode="HTML",
+        reply_markup=math_boosts_menu()
+    )
+    await call.answer()
 
+@dp.callback_query(F.data == "buy_time_boost")
+async def buy_time_boost(call: CallbackQuery):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT star_dust FROM users WHERE user_id = ?", (call.from_user.id,))
+    row = cur.fetchone()
+    dust = row[0] if row else 0
+    
+    if dust >= 50:
+        cur.execute("UPDATE users SET star_dust = star_dust - 50, coins = coins + 10 WHERE user_id = ?", (call.from_user.id,))
+        conn.commit()
+        await call.answer("✅ Куплено! +10 монет в подарок.", show_alert=True)
+    else:
+        await call.answer("❌ Недостаточно пыли!", show_alert=True)
+    conn.close()
+    await call.message.edit_text("⚔️ Магазин математики:", reply_markup=math_boosts_menu())
+
+@dp.callback_query(F.data == "buy_skip")
+async def buy_skip(call: CallbackQuery):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT star_dust FROM users WHERE user_id = ?", (call.from_user.id,))
+    row = cur.fetchone()
+    dust = row[0] if row else 0
+    
+    if dust >= 100:
+        cur.execute("UPDATE users SET star_dust = star_dust - 100, coins = coins + 25 WHERE user_id = ?", (call.from_user.id,))
+        conn.commit()
+        await call.answer("✅ Куплено! +25 монет в подарок.", show_alert=True)
+    else:
+        await call.answer("❌ Недостаточно пыли!", show_alert=True)
+    conn.close()
+    await call.message.edit_text("⚔️ Магазин математики:", reply_markup=math_boosts_menu())
 # ==================== ПРОФИЛЬ ====================
 @dp.callback_query(F.data == "profile")
 async def show_profile(call: CallbackQuery):
