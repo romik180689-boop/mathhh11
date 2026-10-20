@@ -219,7 +219,7 @@ def shop_menu():
         [InlineKeyboardButton(text="⚔️ Бусты для математики (пыль)", callback_data="shop_math_boosts")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")],
     ])
-    def galaxies_menu():
+def galaxies_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌌 Галактика 2: Красный гигант (200 пыли)", callback_data="buy_galaxy_2")],
         [InlineKeyboardButton(text="🌌 Галактика 3: Изумрудный мир (500 пыли)", callback_data="buy_galaxy_3")],
