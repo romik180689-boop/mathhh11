@@ -209,19 +209,14 @@ def main_menu(user):
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
+shop_menu()
+
 def shop_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎨 Темы (50 монет)", callback_data="shop_themes")],
-        [InlineKeyboardButton(text="🏅 Бейджи (100 монет)", callback_data="shop_badges")],
+        [InlineKeyboardButton(text="🎨 Темы (монеты)", callback_data="shop_themes")],
+        [InlineKeyboardButton(text="🏅 Бейджи (монеты)", callback_data="shop_badges")],
+        [InlineKeyboardButton(text="⚔️ Бусты для математики (пыль)", callback_data="shop_math_boosts")], # Новое
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")],
-    ])
-
-def themes_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌑 Тёмная (50)", callback_data="buy_theme_dark")],
-        [InlineKeyboardButton(text="🌈 Неон (50)", callback_data="buy_theme_neon")],
-        [InlineKeyboardButton(text="🥇 Золото (50)", callback_data="buy_theme_gold")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="shop")],
     ])
 
 def badges_menu():
